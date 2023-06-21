@@ -1,0 +1,233 @@
+#include <msp430.h> 
+
+
+/**
+ * main.c
+ */
+void LCD_command(unsigned char);
+void LCD_write(unsigned char);
+void LCD_init(void);
+unsigned int digFour(unsigned int);
+unsigned int digThree(unsigned int);
+unsigned int digTwo(unsigned int);
+unsigned int digOne(unsigned int);
+
+unsigned char first = 0;
+unsigned char second = 0;
+unsigned char third = 0;
+unsigned char fourth = 0;
+
+unsigned int adc_raw[3]; //set array of size 3 to store ADC values
+
+int main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+    PM5CTL0 &= ~LOCKLPM5; //clear LOCKPM5 bit
+    P3DIR |= 0xFF;
+    P3OUT &= ~0xFF;
+    P8DIR |= 0x0E;
+    P8OUT &= ~0x0E;
+    LCD_init(); //initialize
+
+//initialize RGB LED
+	P6DIR |= 0x07; //Port 6.0 6.1 6.2 LEDs as output
+	P6OUT |= 0x07; //set out as high by default, active low LEDs
+	P6REN |= 0x07; //Resistor enable high, pull up
+
+    //ADC
+    P1DIR |= 0x01; //set 1.0
+    P4SEL1 |= 0x0E; // alternate for 3, 2, 1
+    P4SEL0 |= 0x0E; // alternate for 3, 2, 1
+    ADC12CTL0 = ADC12SHT0_6|ADC12MSC|ADC12ON; // adc ctl0
+    ADC12CTL1 = ADC12SHP|ADC12CONSEQ_1; //adc ctl1
+    ADC12CTL2 = ADC12RES_2; // 12 bit
+
+    //setup multi channel conversion
+    ADC12MCTL0 = ADC12INCH_9; // first input channel
+    ADC12MCTL1 = ADC12INCH_10; // second input channel
+    ADC12MCTL2 = ADC12INCH_11|ADC12EOS; // third input channel and end of sequence
+
+
+    while(1) {
+        P3DIR |= 0xFF;
+        P3OUT &= ~0xFF;
+        P8DIR |= 0x0E;
+        P8OUT &= ~0x0E;
+
+        // ADC
+        ADC12CTL0 |= ADC12ENC|ADC12SC; //start conversion
+        while((ADC12IFGR0 & BIT2) == 0);
+        adc_raw[0] = ADC12MEM0;
+        adc_raw[1] = ADC12MEM1;
+        adc_raw[2] = ADC12MEM2;
+        __delay_cycles(250000);
+
+        LCD_command(0x80);
+        //__delay_cycles(300);
+        LCD_write('X');
+        LCD_write(':');
+
+	int convertedValue = 0;
+	convertedValue = (3.3 *(adc_raw[0]) / 4096) * 1000;
+	fourth = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	third = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	two = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	first = (convertedValue % 10) + 48;
+	LCD_write(first);
+	LCD_write('.');
+	LCD_write(second);
+	LCD_write(third);
+	LCD_write(fourth);
+
+        LCD_command(0xC0);
+        LCD_write('Y');
+        LCD_write(':');
+
+        //write number
+        convertedValue = (3.3 *(adc_raw[0]) / 4096) * 1000;
+	fourth = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	third = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	two = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	first = (convertedValue % 10) + 48;
+	LCD_write(first);
+	LCD_write('.');
+	LCD_write(second);
+	LCD_write(third);
+	LCD_write(fourth);
+
+
+        //LCD_command(0xC8);
+        LCD_write(' ');
+        LCD_write(' ');
+        LCD_write('Z');
+        LCD_write(':');
+
+        //write number
+        convertedValue = (3.3 *(adc_raw[0]) / 4096) * 1000;
+	fourth = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	third = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	two = (convertedValue % 10) + 48;
+	convertedValue /= 10;
+	first = (convertedValue % 10) + 48;
+	LCD_write(first);
+	LCD_write('.');
+	LCD_write(second);
+	LCD_write(third);
+	LCD_write(fourth);
+
+
+        fourth = 0;
+        third = 0;
+        second = 0;
+        first = 0;
+	
+	//LED logic
+	//active low 6.0 6.1 6.2 RGB LED
+	//P6.0 R ON 110 actually 0x06 blue
+	//P6.1 G ON 101 actually 0x05 green
+	//P6.2 B ON 011 actually 0x03 red
+
+	//20 degree threshold, 
+	//1.65V is centered
+	//1.46V neg 20 deg
+	//1.83V pos 20 deg
+
+	//from testing, NADC value for -20 deg is 1935 and 20 deg is 2135
+	P6OUT |= 0x07; //resets LEDs to OFF
+
+	if (adc_raw[0] < 1935){ //neg X BLUE
+		P6OUT &= 0x06;
+	}
+	else if (adc_raw[0] > 2135){ //pos X RED
+		P6OUT &= 0x03;
+	}
+
+	if (adc_raw[1] < 1935){ //neg Y BLUE
+		P6OUT &= 0x06;
+	}
+	else if (adc_raw[1] > 2135){//pos Y GREEN
+		P6OUT &= 0x05;
+	}
+	__delay_cycles(25000);
+
+	}
+
+    return 0;
+}
+
+unsigned int digFour(unsigned int val) {
+    if (val < 1000) {
+        return 0;
+    }
+    else {
+        return val / 1000;
+    }
+}
+
+unsigned int digThree(unsigned int val) {
+    val = val % 1000;
+    if (val < 100) {
+        return 0;
+    }
+    else {
+        return val / 100;
+    }
+}
+
+unsigned int digTwo(unsigned int val) {
+    val = val % 100;
+    if (val < 10) {
+        return 0;
+    }
+    else {
+        return val / 10;
+    }
+}
+
+unsigned int digOne(unsigned int val) {
+    return val % 10;
+}
+
+
+
+void LCD_command(unsigned char in) {
+    P3OUT = in;
+    P8OUT &= ~BIT3; // clear RS bit
+    P8OUT &= ~BIT2; //clear read / write enable
+    P8OUT |= BIT1; //set enable
+    __delay_cycles(200);
+    P8OUT &= ~BIT1; //clear enable and create falling edge
+}
+
+void LCD_write(unsigned char in) {
+    P3OUT = in;
+    P8OUT |= BIT3; //set RS bit
+    P8OUT &= ~BIT2; // clear read/write
+    P8OUT |= BIT1; // set enable
+    __delay_cycles(200);
+    P8OUT &= ~BIT1; //clear enable
+}
+
+void LCD_init(){
+    P8OUT &= ~BIT1;
+    __delay_cycles(15000);
+    LCD_command(0x30);
+    __delay_cycles(300);
+    LCD_command(0x30);
+    __delay_cycles(300);
+    LCD_command(0x38);
+    LCD_command(0x10);
+    LCD_command(0x0F);
+    LCD_command(0x06);
+    LCD_command(0x01);
+    __delay_cycles(3000);
+}
+

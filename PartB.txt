@@ -1,0 +1,67 @@
+#include <msp430.h>
+
+unsigned int adc_raw[3];
+int main(void){
+//initialize conversion
+	WDTCTL = WDTPW | WDTHOLD;
+	PM5CTL0 &= ~LOCKLPM5;
+
+
+	P4SEL1 |= 0x0E;
+	P4SEL0 |= 0x0E;
+	ADC12CTL0 = ADC12SHT0_6 | ADC12MSC | ADC12ON;
+	ADC12CTL1 = ADC12SHP | ADC12CONSEQ_1;
+	ADC12CTL2 |= ADC12RES_2;
+
+	ADC12MCTL0 = ADC12INCH_9;
+	ADC12MCTL1 = ADC12INCH_10;
+	ADC12MCTL2 = ADC12INCH_11 | ADC12EOS;
+
+//initialize LED
+	P6DIR |= 0x07; //Port 6.0 6.1 6.2 LEDs as output
+	P6OUT |= 0x07; //set out as high by default, active low LEDs
+	P6REN |= 0x07; //Resistor enable high, pull up
+
+
+//loop here, initialization done/////////////////////
+	ADC12CTL0 |= ADC12ENC | ADC12SC;
+	while((ADC12IFGR0 & BIT2)==0);
+	adc_raw[0] = ADC12MEM0; //maybe X
+	adc_raw[1] = ADC12MEM1; //maybe Y
+	adc_raw[2] = ADC12MEM2; //maybe Z
+	
+
+//LED logic
+	//active low 6.0 6.1 6.2 RGB LED
+	//P6.0 R ON 110 0x06
+	//P6.1 G ON 101 0x05
+	//P6.2 B ON 011 0x03
+
+	//20 degree threshold, 
+	//1.65V is centered
+	//1.46V neg 20 deg
+	//1.83V pos 20 deg
+
+	P6OUT |= 0x07; //resets LEDs to OFF
+
+	if (adc_raw[0] > 1.83){ //X axis positive 20 deg RED ON
+		P6OUT &= 0x06;
+	}
+	else if (adc_raw[0] < 1.46){ //X axis negative 20 deg BLUE ON
+		P6OUT &= 0x03;
+	}
+
+	if (adc_raw[1] > 1.83){ //Y axis positive 20 deg GREEN ON
+		P6OUT &= 0x05;
+	}
+	else if (adc_raw[1] < 1.46){//Y axis negative 20 deg BLUE ON
+		P6OUT &= 0x03;
+	}
+	__delay_cycles(25000);
+
+//end loop here
+
+
+return 0;
+}
+
